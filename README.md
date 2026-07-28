@@ -1,165 +1,199 @@
-# CodeCipherBot
+# CodeCipherBot 2
 
-Bot de Telegram para codificar y decodificar texto o scripts, además de cifrar
-archivos con contraseña. Está construido con `pyTelegramBotAPI` y
-`pycryptodome`, sin base de datos y sin ejecutar archivos recibidos.
+Bot público de Telegram para proteger código ejecutable, codificar, comprimir,
+cifrar, firmar y analizar archivos. Incluye una API Flask, panel web/Mini App,
+SQLite, límites de abuso y controles administrativos.
 
-## Aviso urgente sobre el token
+Panel desplegado:
+[codecipherbot-control.gh0stdeveloper.chatgpt.site](https://codecipherbot-control.gh0stdeveloper.chatgpt.site)
 
-El token que estaba escrito dentro del `main.py` original fue publicado. Debes
-considerarlo comprometido:
+## Acción obligatoria: rota el token
 
-1. Abre `@BotFather` en Telegram.
-2. Ejecuta `/revoke` y selecciona el bot.
-3. Genera un token nuevo.
-4. Guarda el token nuevo únicamente en `BOT_TOKEN`.
+El token original apareció dentro del código y debe considerarse comprometido.
+En `@BotFather`, ejecuta `/revoke`, genera otro token y guárdalo únicamente en
+`BOT_TOKEN`. No reutilices ni publiques el token anterior.
 
-No vuelvas a incluir el token en el código, un ZIP, GitHub o una captura.
+## Protección ejecutable frente a cifrado
 
-## Funciones
+Son dos funciones distintas:
 
-- Python:
-  - Base64.
-  - Base64 + Zlib.
-  - Codificación Emoji.
-  - Marshal.
-  - Ofuscación multicapa Base85 + Zlib.
-- JavaScript: Base64 con soporte UTF-8.
-- PHP: Base64.
-- Texto: Base64 UTF-8.
-- Archivos: AES-256-GCM, PBKDF2-HMAC-SHA256, salt y nonce aleatorios.
-- Menús editables y botón para volver.
-- Sesiones separadas por chat y usuario.
-- Contraseñas temporales de un solo intento.
-- Límite de archivo y límite de solicitudes configurables.
-- Lista opcional de usuarios autorizados.
-- Procesamiento en memoria, sin nombres temporales compartidos.
+- **Protección ejecutable:** el resultado puede iniciarse directamente con su
+  runtime. Como el cargador debe recuperar el código sin pedir una clave, es
+  ofuscación reversible y no puede ocultarlo frente a un analista.
+- **Cifrado real:** AES-256-GCM o ChaCha20-Poly1305 con contraseña, salt
+  aleatorio, PBKDF2 y autenticación. Protege confidencialidad e integridad, pero
+  primero debe descifrarse; no es autoejecutable.
 
-## Correcciones de seguridad importantes
+El backend nunca ejecuta los scripts enviados. La recuperación de wrappers, la
+detección y el análisis son estáticos.
 
-Los decodificadores antiguos cambiaban `exec` por `print` y después iniciaban el
-archivo mediante `subprocess`. Un archivo preparado podía ejecutar comandos aun
-sin usar literalmente `exec`. Esta versión solo extrae y valida cargas mediante
-análisis estático.
+## Compatibilidad ejecutable
 
-El AES antiguo utilizaba ECB, una contraseña fija, relleno con espacios y un
-formato de cifrado distinto al esperado por el descifrador. Se reemplazó por un
-contenedor binario autenticado `.gcb`. Los archivos producidos por el método AES
-antiguo no son compatibles porque aquel flujo estaba internamente roto.
+| Entrada | Salida | Compatibilidad |
+| --- | --- | --- |
+| Python `.py` | `.py` Base64 o Zlib | Mismo comportamiento normal del intérprete |
+| Python `.py` Marshal | `.py` bytecode | Misma versión mayor/menor de Python |
+| Node `.js`, `.cjs` | CommonJS autocargable | Conserva `require`, `exports`, `__filename` |
+| JavaScript navegador `.js` | Script autocargable | Navegadores modernos con `TextDecoder` |
+| HTML `.html` | Documento autocargable | Conserva rutas relativas habituales |
+| PHP `.php` | `.php` autocargable | Requiere PHP con `base64_decode` |
+| Bash `.sh` | `.sh` autocargable | GNU/Linux y macOS |
+| PowerShell `.ps1` | `.ps1` autocargable | PowerShell 5+ / PowerShell Core |
+| Ruby `.rb` | `.rb` autocargable | `Base64` de la biblioteca estándar |
+| Perl `.pl` | `.pl` autocargable | `MIME::Base64` |
+| Lua `.lua` | `.lua` autocargable | Lua con `load` o `loadstring` |
 
-Base64, Zlib, Emoji, Marshal y multicapa son ofuscación/codificación reversible;
-no protegen un script contra alguien que quiera leerlo. Para confidencialidad
-real utiliza la categoría **Cifrado seguro**.
+Java, Kotlin, Go, C, C++, C#, Rust, Swift, TypeScript y módulos Node ESM
+necesitan compilación, transpilación o bundling. No existe un único archivo
+portable para todos los sistemas sin conocer toolchain, plataforma y
+arquitectura. El bot lo indica en vez de entregar un archivo que falle.
 
-## Instalación general
+El modo `/batch protect` procesa proyectos ZIP sin cambiar rutas ni nombres:
+protege scripts compatibles y copia recursos/configuración sin alterarlos. Los
+paquetes Node con `"type": "module"` se omiten para no romper imports ESM.
+
+## Funciones públicas
+
+- `/start`, `/help`, `/cancel`, `/methods`
+- `/protect`, `/encode`, `/decode`, `/encrypt`, `/decrypt`
+- `/batch protect|unwrap`
+- `/hash`, `/verifyhash`
+- `/keygen`, `/sign`, `/verify` con Ed25519
+- `/qr`, `/detect`, `/analyze`
+- `/preset`, `/history`, `/settings`, `/language`
+- `/limits`, `/status`, `/privacy`, `/about`, `/panel`
+
+Todos los usuarios pueden usar estas funciones. `OWNER_IDS` y `ADMIN_IDS` solo
+controlan acciones administrativas:
+
+- `/admin`, `/stats`, `/users`, `/logs`, `/health`
+- `/ban`, `/unban`, `/broadcast`
+- `/maintenance`, `/enablemethod`, `/disablemethod`
+- `/exportdata` (solo propietario)
+
+El panel permite consultar actividad propia. Los administradores además pueden
+ver estadísticas, usuarios y auditoría; bloquear cuentas; activar métodos;
+iniciar mantenimiento y poner difusiones en cola.
+
+## Instalación
 
 Requiere Python 3.10 o posterior.
 
 ```bash
+python -m venv .venv
+. .venv/bin/activate
 python -m pip install -r requirements.txt
+cp .env.example .env
 ```
 
-Configura el token y ejecuta:
+Exporta las variables de `.env` con tu gestor de secretos y ejecuta:
 
 ```bash
-export BOT_TOKEN="TOKEN_NUEVO"
 python main.py
 ```
 
-## Termux
+En PowerShell:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+py -m pip install -r requirements.txt
+$env:BOT_TOKEN = "TOKEN_NUEVO"
+$env:OWNER_IDS = "TU_ID"
+py main.py
+```
+
+En Termux:
 
 ```bash
 pkg update
 pkg install python
-python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 export BOT_TOKEN="TOKEN_NUEVO"
+export OWNER_IDS="TU_ID"
 python main.py
 ```
 
-Para mantenerlo activo durante una sesión puedes usar `termux-wake-lock` y
-`tmux`. Android todavía puede cerrar Termux si tiene optimización de batería.
+## Configuración esencial
 
-## Windows
+| Variable | Predeterminado | Uso |
+| --- | --- | --- |
+| `BOT_TOKEN` | obligatoria | Token nuevo de BotFather |
+| `OWNER_IDS` | vacío | IDs con control total |
+| `ADMIN_IDS` | vacío | IDs administrativos adicionales |
+| `DATABASE_PATH` | `./data/codecipherbot.sqlite3` | SQLite de metadatos |
+| `MAX_FILE_SIZE_MB` | `10` | Entrada individual, máximo 20 MB |
+| `MAX_BATCH_FILES` | `40` | Entradas máximas por ZIP |
+| `MAX_BATCH_UNCOMPRESSED_MB` | `30` | Salida descomprimida máxima |
+| `RATE_LIMIT_PER_MINUTE` | `20` | Límite por usuario |
+| `PANEL_URL` | vacío | URL del panel/Mini App |
+| `PUBLIC_API_URL` | vacío | URL HTTPS que `/panel` entrega al frontend |
+| `CORS_ORIGINS` | vacío | Orígenes exactos autorizados |
+| `ADMIN_SESSION_SECRET` | derivada | Secreto independiente recomendado |
+| `RUN_MODE` | `polling` | `polling` o `webhook` |
 
-PowerShell:
+Consulta [`.env.example`](.env.example) para ver todas las variables.
 
-```powershell
-py -m pip install -r requirements.txt
-$env:BOT_TOKEN = "TOKEN_NUEVO"
-py main.py
-```
+### Panel y Mini App
 
-Símbolo del sistema:
+1. Despliega este backend con HTTPS.
+2. Define `PANEL_URL` y añade ese mismo origen a `CORS_ORIGINS`.
+3. Abre el panel y configura la URL HTTPS del backend.
+4. En BotFather, configura el dominio de la Mini App si deseas abrirla dentro
+   de Telegram.
+5. `/panel` usa `initData` de Telegram. Para administradores también genera un
+   código alternativo de un solo uso que caduca a los cinco minutos.
 
-```bat
-py -m pip install -r requirements.txt
-set BOT_TOKEN=TOKEN_NUEVO
-py main.py
-```
+La API valida la firma HMAC y la antigüedad de `initData`; el cliente nunca
+decide su propio rol.
 
-## Railway
-
-1. Sube la carpeta a un repositorio privado.
-2. Crea un proyecto desde ese repositorio.
-3. En **Variables**, añade `BOT_TOKEN` con el token nuevo.
-4. Railway usará el `Dockerfile` y ejecutará `python main.py`.
-
-El proceso es un worker: no necesita exponer un puerto HTTP.
-
-## VPS Ubuntu o Linux
-
-Instala las dependencias dentro de un entorno virtual:
+## Despliegue con Docker o Railway
 
 ```bash
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-export BOT_TOKEN="TOKEN_NUEVO"
-python main.py
+docker build -t codecipherbot .
+docker run --rm -p 8080:8080 --env-file .env codecipherbot
 ```
 
-Para producción, guarda `BOT_TOKEN` en un archivo de entorno protegido y crea
-un servicio `systemd`; no escribas el secreto directamente en el archivo
-versionado.
+Railway usa `Dockerfile`, expone `/health` y ejecuta Telegram y la API en el
+mismo proceso. Monta un volumen para `/app/data` si quieres conservar SQLite
+entre despliegues. Para varias réplicas, migra metadatos a una base de datos
+compartida antes de escalar.
 
-## Variables
+En webhook configura también:
 
-| Variable | Valor inicial | Descripción |
-| --- | ---: | --- |
-| `BOT_TOKEN` | obligatoria | Token nuevo de BotFather |
-| `MAX_FILE_SIZE_MB` | `5` | Límite de entrada, entre 1 y 20 MB |
-| `RATE_LIMIT_PER_MINUTE` | `12` | Operaciones por usuario cada minuto |
-| `BOT_WORKERS` | `4` | Hilos para atender actualizaciones |
-| `ALLOWED_USER_IDS` | vacío | IDs permitidos separados por comas |
-| `LOG_LEVEL` | `INFO` | Nivel de registro |
-
-Si `ALLOWED_USER_IDS` está vacío, cualquier usuario podrá usar el bot.
+```text
+RUN_MODE=webhook
+WEBHOOK_BASE_URL=https://api.example.com
+WEBHOOK_PATH_SECRET=valor-aleatorio
+WEBHOOK_HEADER_SECRET=valor-aleatorio
+```
 
 ## Pruebas
 
 ```bash
-python -m unittest discover -s tests -v
+python -m pytest -q
 python -m compileall -q .
 ```
 
-Las pruebas verifican todos los ciclos de codificación, Unicode, autenticación
-AES, contraseña incorrecta, modificación del ciphertext y que los
-decodificadores no ejecuten el contenido recibido.
+La suite comprueba wrappers, ejecución real cuando el runtime está instalado,
+ZIPs, cifrado autenticado, modificación de ciphertext, almacenamiento, API,
+autenticación de Telegram y compatibilidad heredada.
 
 ## Estructura
 
 ```text
-CodeCipherBot/
-├── main.py
-├── config.py
-├── encryption_methods.py
-├── encrypt_methodos.py
-├── requirements.txt
-├── Dockerfile
-├── Procfile
-├── railway.toml
-├── .env.example
-└── tests/
+codecipher/
+├── batch.py       # proyectos ZIP seguros
+├── bot.py         # comandos públicos y administrativos
+├── config.py      # entorno y límites
+├── registry.py    # registro único de métodos
+├── runnable.py    # wrappers y recuperación estática
+├── security.py    # AES-GCM y ChaCha20-Poly1305
+├── storage.py     # SQLite de metadatos
+├── tools.py       # hashes, QR, firmas, análisis
+└── web.py         # API del panel/Mini App
 ```
+
+El código del panel se encuentra en `dashboard/`. La arquitectura y el contrato
+HTTP están en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) y
+[`docs/API.md`](docs/API.md).
