@@ -37,6 +37,28 @@ class RunnableWrapperTests(unittest.TestCase):
         wrapper = protect_code(source, "script.py", "python", "zlib")
         self.assertEqual(unwrap_code(wrapper.content, "script.py").content, source)
 
+    def test_python_emoji_and_multilayer_round_trip_and_execute(self) -> None:
+        source = 'print("LEGACY_OK 👻")\n'
+        for method in ("emoji", "multilayer"):
+            with self.subTest(method=method):
+                wrapper = protect_code(source, "script.py", "python", method)
+                self.assertEqual(
+                    unwrap_code(wrapper.content, "script.py").content,
+                    source,
+                )
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "script.py"
+                    path.write_text(wrapper.content, encoding="utf-8")
+                    result = subprocess.run(
+                        [sys.executable, str(path)],
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                        check=False,
+                    )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("LEGACY_OK", result.stdout)
+
     def test_auto_rejects_compiled_source_with_clear_message(self) -> None:
         with self.assertRaisesRegex(ProcessingError, "compilación"):
             process("runnable_auto", b"int main() {}", "main.c")
@@ -107,4 +129,3 @@ class RegistryRoundTripTests(unittest.TestCase):
                 compressed.filename,
             )
             self.assertEqual(decompressed.content, original)
-

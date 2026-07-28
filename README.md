@@ -31,7 +31,7 @@ detección y el análisis son estáticos.
 
 | Entrada | Salida | Compatibilidad |
 | --- | --- | --- |
-| Python `.py` | `.py` Base64 o Zlib | Mismo comportamiento normal del intérprete |
+| Python `.py` | `.py` Base64, Zlib, Emoji o multicapa | Mismo comportamiento normal del intérprete |
 | Python `.py` Marshal | `.py` bytecode | Misma versión mayor/menor de Python |
 | Node `.js`, `.cjs` | CommonJS autocargable | Conserva `require`, `exports`, `__filename` |
 | JavaScript navegador `.js` | Script autocargable | Navegadores modernos con `TextDecoder` |

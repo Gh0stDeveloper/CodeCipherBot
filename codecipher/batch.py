@@ -9,7 +9,13 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
-from .runnable import LANGUAGE_EXTENSIONS, MARKER_RE, protect_code, unwrap_code
+from .runnable import (
+    LANGUAGE_EXTENSIONS,
+    MARKER_RE,
+    compiled_language,
+    protect_code,
+    unwrap_code,
+)
 
 
 class BatchError(ValueError):
@@ -122,6 +128,11 @@ def process_project_zip(
                     result = protect_code(text, name).content.encode("utf-8")
                     protected += 1
                     report.append(f"PROTEGIDO  {name}")
+                elif action == "protect" and compiled_language(name):
+                    copied += 1
+                    report.append(
+                        f"OMITIDO     {name}: requiere compilación, transpilación o bundling"
+                    )
                 elif action == "unwrap" and MARKER_RE.search(text):
                     result = unwrap_code(text, name).content.encode("utf-8")
                     recovered += 1

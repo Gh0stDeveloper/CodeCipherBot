@@ -77,6 +77,18 @@ PAYLOAD_RE = re.compile(
     r"['\"]([A-Za-z0-9+/=]+)['\"]",
     flags=re.DOTALL,
 )
+EMOJI_PAYLOAD_RE = re.compile(
+    r"_CODECIPHER_EMOJI_PAYLOAD\s*=\s*'''(.*?)'''",
+    flags=re.DOTALL,
+)
+MULTILAYER_PAYLOAD_RE = re.compile(
+    r"_CODECIPHER_MULTILAYER_PAYLOAD\s*=\s*['\"]([^'\"]+)['\"]",
+)
+EMOJI_ALPHABET = (
+    "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🙂",
+    "🙃", "😉", "😊", "😎", "🤓", "🧐", "🤖", "👻",
+)
+MAX_UNWRAPPED_BYTES = 30 * 1024 * 1024
 
 
 def _safe_basename(filename: str) -> str:
@@ -141,6 +153,42 @@ def _python(source: str, filename: str, method: str) -> str:
         f"_CODECIPHER_PAYLOAD = {payload!r}\n"
         f"_cc_source = {decode}.decode('utf-8')\n"
         "exec(compile(_cc_source, __file__, 'exec'), globals(), globals())\n"
+    )
+
+
+def _python_emoji(source: str) -> str:
+    payload = "".join(
+        EMOJI_ALPHABET[int(character, 16)]
+        for character in source.encode("utf-8").hex()
+    )
+    chunks = "\n".join(
+        payload[index:index + 96]
+        for index in range(0, len(payload), 96)
+    )
+    return (
+        "# CODECIPHER:PYTHON:EMOJI:V1\n"
+        f"_cc_alphabet = {EMOJI_ALPHABET!r}\n"
+        f"_CODECIPHER_EMOJI_PAYLOAD = '''{chunks}'''\n"
+        "_cc_hex = ''.join(format(_cc_alphabet.index(char), 'x') "
+        "for char in _CODECIPHER_EMOJI_PAYLOAD if char in _cc_alphabet)\n"
+        "_cc_source = bytes.fromhex(_cc_hex).decode('utf-8')\n"
+        "exec(compile(_cc_source, __file__, 'exec'), globals(), globals())\n"
+    )
+
+
+def _python_multilayer(source: str) -> str:
+    data = source.encode("utf-8")
+    for _ in range(3):
+        data = base64.b85encode(zlib.compress(data, level=9))
+    payload = data.decode("ascii")
+    return (
+        "# CODECIPHER:PYTHON:MULTILAYER:V1\n"
+        "import base64 as _cc_b64, zlib as _cc_zlib\n"
+        f"_CODECIPHER_MULTILAYER_PAYLOAD = {payload!r}\n"
+        "_cc_data = _CODECIPHER_MULTILAYER_PAYLOAD.encode('ascii')\n"
+        "for _cc_layer in range(3):\n"
+        "    _cc_data = _cc_zlib.decompress(_cc_b64.b85decode(_cc_data))\n"
+        "exec(compile(_cc_data.decode('utf-8'), __file__, 'exec'), globals(), globals())\n"
     )
 
 
@@ -287,13 +335,20 @@ def protect_code(
         )
     if selected not in LANGUAGE_LABELS:
         raise RunnableError("Lenguaje no compatible.")
-    if method not in {"base64", "zlib", "marshal"}:
+    if method not in {"base64", "zlib", "marshal", "emoji", "multilayer"}:
         raise RunnableError("Método ejecutable no compatible.")
-    if method in {"zlib", "marshal"} and selected != "python":
-        raise RunnableError("Zlib y Marshal ejecutables están disponibles para Python.")
+    if method in {"zlib", "marshal", "emoji", "multilayer"} and selected != "python":
+        raise RunnableError(
+            "Zlib, Marshal, Emoji y multicapa ejecutables están disponibles para Python."
+        )
 
     if selected == "python":
-        output = _python(source, safe_name, method)
+        if method == "emoji":
+            output = _python_emoji(source)
+        elif method == "multilayer":
+            output = _python_multilayer(source)
+        else:
+            output = _python(source, safe_name, method)
     elif selected == "javascript_node":
         output = _javascript_node(source)
     elif selected == "javascript_browser":
@@ -334,13 +389,41 @@ def unwrap_code(wrapper: str, original_filename: str = "decoded.txt") -> Runnabl
         raise RunnableError(
             "Marshal conserva bytecode ejecutable, pero no contiene el código fuente original."
         )
-    payload_match = PAYLOAD_RE.search(wrapper)
-    if not payload_match:
-        raise RunnableError("La carga ejecutable está incompleta.")
     try:
-        data = base64.b64decode(payload_match.group(1), validate=True)
-        if method == "ZLIB":
-            data = zlib.decompress(data)
+        if method == "EMOJI":
+            emoji_match = EMOJI_PAYLOAD_RE.search(wrapper)
+            if not emoji_match:
+                raise RunnableError("La carga Emoji está incompleta.")
+            symbols = [
+                character
+                for character in emoji_match.group(1)
+                if not character.isspace()
+            ]
+            if len(symbols) % 2 or any(
+                character not in EMOJI_ALPHABET for character in symbols
+            ):
+                raise RunnableError("La carga Emoji está dañada.")
+            hexadecimal = "".join(
+                format(EMOJI_ALPHABET.index(character), "x")
+                for character in symbols
+            )
+            data = bytes.fromhex(hexadecimal)
+        elif method == "MULTILAYER":
+            multilayer_match = MULTILAYER_PAYLOAD_RE.search(wrapper)
+            if not multilayer_match:
+                raise RunnableError("La carga multicapa está incompleta.")
+            data = multilayer_match.group(1).encode("ascii")
+            for _ in range(3):
+                data = _safe_zlib_decompress(base64.b85decode(data))
+        else:
+            payload_match = PAYLOAD_RE.search(wrapper)
+            if not payload_match:
+                raise RunnableError("La carga ejecutable está incompleta.")
+            data = base64.b64decode(payload_match.group(1), validate=True)
+            if method == "ZLIB":
+                data = _safe_zlib_decompress(data)
+        if len(data) > MAX_UNWRAPPED_BYTES:
+            raise RunnableError("La carga supera el límite de seguridad.")
         source = data.decode("utf-8")
     except (ValueError, zlib.error, UnicodeDecodeError) as exc:
         raise RunnableError("La carga ejecutable está dañada.") from exc
@@ -365,3 +448,19 @@ def unwrap_code(wrapper: str, original_filename: str = "decoded.txt") -> Runnabl
         language=language,
         method=method.lower(),
     )
+
+
+def _safe_zlib_decompress(data: bytes) -> bytes:
+    try:
+        decompressor = zlib.decompressobj()
+        result = decompressor.decompress(data, MAX_UNWRAPPED_BYTES + 1)
+        if decompressor.unconsumed_tail or len(result) > MAX_UNWRAPPED_BYTES:
+            raise RunnableError("La capa descomprimida supera el límite.")
+        result += decompressor.flush(
+            max(1, MAX_UNWRAPPED_BYTES + 1 - len(result))
+        )
+        if not decompressor.eof or len(result) > MAX_UNWRAPPED_BYTES:
+            raise RunnableError("La capa comprimida está incompleta o es demasiado grande.")
+        return result
+    except zlib.error as exc:
+        raise RunnableError("La capa Zlib está dañada.") from exc

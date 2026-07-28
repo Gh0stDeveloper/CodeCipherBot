@@ -92,6 +92,20 @@ METHODS: dict[str, MethodSpec] = {
         "Bytecode ligado a la versión mayor/menor de Python usada por el bot.",
         "runnable:python:marshal",
     ),
+    "runnable_python_emoji": _spec(
+        "runnable_python_emoji",
+        "Python ejecutable · Emoji",
+        "runnable",
+        "Representa los bytes UTF-8 con un alfabeto Emoji ejecutable.",
+        "runnable:python:emoji",
+    ),
+    "runnable_python_multilayer": _spec(
+        "runnable_python_multilayer",
+        "Python ejecutable · Multicapa",
+        "runnable",
+        "Aplica tres capas Base85 + Zlib en un cargador ejecutable.",
+        "runnable:python:multilayer",
+    ),
     "runnable_node": _spec(
         "runnable_node",
         "Node.js ejecutable",
@@ -335,8 +349,13 @@ def process(
                 None if language == "auto" else language,
                 method,
             )
+            encoded = result.content.encode("utf-8")
+            if len(encoded) > output_limit:
+                raise ProcessingError(
+                    "El wrapper supera el límite de salida; usa otro método o un archivo menor."
+                )
             return ProcessedFile(
-                result.content.encode("utf-8"),
+                encoded,
                 result.filename,
                 (
                     f"{LANGUAGE_LABELS[result.language]} protegido. "
