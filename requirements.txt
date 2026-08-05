@@ -1,2 +1,5 @@
 pyTelegramBotAPI==4.28.0
 pycryptodome==3.23.0
+Flask>=3.1,<4
+waitress>=3,<4
+qrcode>=8,<9
